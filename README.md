@@ -50,6 +50,7 @@ cargo test
 ```
 
 ## How It Fits
+- [OpenConstruct Documentation](https://github.com/SuperInstance/openconstruct-docs) — ecosystem-wide docs and guides
 
 This is the reference implementation. The [C ABI](https://github.com/SuperInstance/openconstruct-abi) is built from this crate, and all other bindings ([Python](https://github.com/SuperInstance/openconstruct-python), [Go](https://github.com/SuperInstance/openconstruct-go), [TypeScript](https://github.com/SuperInstance/openconstruct-ts), etc.) follow the same protocol.
 
