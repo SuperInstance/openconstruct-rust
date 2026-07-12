@@ -146,3 +146,121 @@ impl SenseManager {
         &self.shadows
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_seeds_default_nodes() {
+        let mgr = FleetManager::new();
+        // discover() must snapshot the stored nodes, not a fresh hardcoded set.
+        assert_eq!(mgr.nodes().len(), mgr.discover().nodes.len());
+        assert!(mgr.nodes().iter().any(|n| n.id == "node-alpha"));
+    }
+
+    #[test]
+    fn with_nodes_round_trip() {
+        let mgr = FleetManager::with_nodes(vec![]);
+        assert!(mgr.nodes().is_empty());
+        assert!(mgr.discover().nodes.is_empty());
+    }
+
+    #[test]
+    fn add_node_appears_in_discovery() {
+        let mut mgr = FleetManager::with_nodes(vec![]);
+        mgr.add_node(FleetNode {
+            id: "solo".into(),
+            name: "Solo".into(),
+            address: "1.2.3.4:9".into(),
+            capabilities: vec!["x".into()],
+            load: 0.0,
+            latency_ms: 1,
+            online: true,
+        });
+        let d = mgr.discover();
+        assert_eq!(d.nodes.len(), 1);
+        assert_eq!(d.nodes[0].id, "solo");
+    }
+
+    #[test]
+    fn discover_snapshots_state_with_fresh_timestamp() {
+        // Two calls return equal node sets but the snapshot is a clone, so
+        // mutating one does not affect the other.
+        let mgr = FleetManager::new();
+        let d1 = mgr.discover();
+        let d2 = mgr.discover();
+        assert_eq!(d1.nodes.len(), d2.nodes.len());
+        // Timestamps are non-decreasing across calls.
+        assert!(d2.timestamp >= d1.timestamp);
+    }
+
+    #[test]
+    fn best_node_for_skips_offline_even_when_only_match() {
+        // Delta is the only node advertising "training" but it is offline.
+        // best_node_for must refuse to return an offline node.
+        let mgr = FleetManager::new();
+        let discovery = mgr.discover();
+        let err = discovery.best_node_for("training").unwrap_err();
+        assert!(matches!(
+            err,
+            crate::OpenConstructError::FleetNoMatch { .. }
+        ));
+    }
+
+    #[test]
+    fn best_node_for_picks_lower_score() {
+        // Two online nodes both advertise "shared". The one with the lower
+        // combined load + latency*0.01 score must win.
+        let mgr = FleetManager::with_nodes(vec![
+            FleetNode {
+                id: "heavy".into(),
+                name: "Heavy".into(),
+                address: "1.1.1.1:1".into(),
+                capabilities: vec!["shared".into()],
+                load: 0.9,
+                latency_ms: 200,
+                online: true,
+            },
+            FleetNode {
+                id: "light".into(),
+                name: "Light".into(),
+                address: "2.2.2.2:2".into(),
+                capabilities: vec!["shared".into()],
+                load: 0.1,
+                latency_ms: 5,
+                online: true,
+            },
+        ]);
+        let discovery = mgr.discover();
+        let best = discovery.best_node_for("shared").unwrap();
+        assert_eq!(best.id, "light");
+    }
+
+    #[test]
+    fn sense_fuse_needs_two_shadows() {
+        let mut sm = SenseManager::new();
+        assert!(sm.fuse("c").is_none());
+        sm.create_shadow("a", SenseKind::Vision, serde_json::json!(1));
+        assert_eq!(sm.shadows().len(), 1);
+        assert!(sm.fuse("c").is_none());
+        sm.create_shadow("b", SenseKind::Audio, serde_json::json!(2));
+        let fused = sm.fuse("corr-1").expect("two shadows should fuse");
+        assert_eq!(fused.correlation_id, "corr-1");
+        assert_eq!(fused.sources, vec!["a".to_string(), "b".to_string()]);
+        assert!(fused.confidence > 0.0);
+    }
+
+    #[test]
+    fn sense_create_shadow_records_kind_and_value() {
+        let mut sm = SenseManager::new();
+        let shadow = sm.create_shadow(
+            "cam",
+            SenseKind::Custom("depth".into()),
+            serde_json::json!({"d": 3}),
+        );
+        assert_eq!(shadow.source, "cam");
+        assert_eq!(shadow.kind, SenseKind::Custom("depth".into()));
+        assert_eq!(sm.shadows().len(), 1);
+    }
+}

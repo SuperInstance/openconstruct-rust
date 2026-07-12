@@ -186,3 +186,101 @@ impl PolicyEngine {
         &self.rules
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_engine_defaults_to_ask() {
+        let engine = PolicyEngine::new();
+        assert_eq!(
+            engine.evaluate("anything", "/anywhere"),
+            PolicyDecision::Ask
+        );
+        assert!(engine.rules().is_empty());
+    }
+
+    #[test]
+    fn first_match_wins_over_later_wildcard() {
+        // A specific Allow rule must shadow a later wildcard Deny rule for the
+        // same action. This is the security-critical ordering guarantee.
+        let mut engine = PolicyEngine::new();
+        engine.add_rule(PolicyRule {
+            action_pattern: "file.read".into(),
+            resource_pattern: "/tmp/safe".into(),
+            decision: PolicyDecision::Allow,
+            description: "explicit allow".into(),
+        });
+        engine.add_rule(PolicyRule {
+            action_pattern: "file.read".into(),
+            resource_pattern: "*".into(),
+            decision: PolicyDecision::Deny,
+            description: "deny everything else".into(),
+        });
+        assert_eq!(
+            engine.evaluate("file.read", "/tmp/safe"),
+            PolicyDecision::Allow
+        );
+        assert_eq!(
+            engine.evaluate("file.read", "/tmp/other"),
+            PolicyDecision::Deny
+        );
+    }
+
+    #[test]
+    fn add_rule_takes_effect() {
+        let mut engine = PolicyEngine::new();
+        engine.add_rule(PolicyRule {
+            action_pattern: "custom.action".into(),
+            resource_pattern: "res".into(),
+            decision: PolicyDecision::Deny,
+            description: "test".into(),
+        });
+        assert_eq!(
+            engine.evaluate("custom.action", "res"),
+            PolicyDecision::Deny
+        );
+        // Other resources still fall through to default Ask.
+        assert_eq!(
+            engine.evaluate("custom.action", "other"),
+            PolicyDecision::Ask
+        );
+    }
+
+    #[test]
+    fn matches_pattern_exact_and_wildcard() {
+        let engine = PolicyEngine::new();
+        // exact
+        assert!(engine.matches_pattern("foo", "foo"));
+        assert!(!engine.matches_pattern("foo", "foobar"));
+        // bare star
+        assert!(engine.matches_pattern("*", ""));
+        assert!(engine.matches_pattern("*", "anything"));
+        // trailing star — prefix semantics
+        assert!(engine.matches_pattern("/dev/video*", "/dev/video0"));
+        assert!(engine.matches_pattern("/dev/video*", "/dev/video"));
+        assert!(!engine.matches_pattern("/dev/video*", "/etc/passwd"));
+        // empty pattern only matches empty value
+        assert!(engine.matches_pattern("", ""));
+        assert!(!engine.matches_pattern("", "x"));
+    }
+
+    #[test]
+    fn defaults_engine_has_expected_rules() {
+        let engine = PolicyEngine::load_defaults();
+        // At least the rules exercised by README examples.
+        assert!(engine
+            .rules()
+            .iter()
+            .any(|r| r.action_pattern == "vision.capture"));
+        assert!(engine
+            .rules()
+            .iter()
+            .any(|r| r.action_pattern == "file.write"));
+        assert!(engine
+            .rules()
+            .iter()
+            .any(|r| r.action_pattern == "system.shutdown"));
+    }
+}

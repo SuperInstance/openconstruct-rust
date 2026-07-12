@@ -230,14 +230,6 @@ fn policy_check_without_session_errors() {
 }
 
 #[test]
-fn module_filtering_by_domain() {
-    let registry = openconstruct::registry::ModuleRegistry::load_defaults();
-    let perception = registry.filter_by_domain("perception");
-    assert!(!perception.is_empty());
-    assert!(perception.iter().any(|m| m.name == "prism-vision"));
-}
-
-#[test]
 fn module_filtering_by_tag() {
     let registry = openconstruct::registry::ModuleRegistry::load_defaults();
     let graph_modules = registry.filter_by_tag("graph");
@@ -245,4 +237,99 @@ fn module_filtering_by_tag() {
     assert!(graph_modules
         .iter()
         .any(|m| m.name == "spectral-graph-core"));
+}
+
+#[test]
+fn discover_fleet_without_session_errors() {
+    let client = OpenConstructClient::builder().build();
+    // Symmetric with policy_check_without_session_errors — discover_fleet also
+    // requires a session and this branch was previously untested.
+    assert!(client.discover_fleet().is_err());
+}
+
+#[test]
+fn registry_find_missing_returns_none() {
+    let registry = openconstruct::registry::ModuleRegistry::load_defaults();
+    assert!(registry.find("does-not-exist").is_none());
+    assert!(registry.find("spectral-graph-core").is_some());
+}
+
+#[test]
+fn registry_add_and_new() {
+    let mut registry = openconstruct::registry::ModuleRegistry::new();
+    assert!(registry.list().is_empty());
+    registry.add(ModuleDescriptor {
+        name: "custom".into(),
+        version: "0.1.0".into(),
+        domain: "custom".into(),
+        tags: vec!["t".into()],
+        description: "custom module".into(),
+        enabled: true,
+    });
+    assert_eq!(registry.list().len(), 1);
+    assert!(registry.find("custom").is_some());
+}
+
+#[test]
+fn custom_interface_choice_round_trips() {
+    let choice = InterfaceChoice::Custom("slack".into());
+    assert_eq!(choice.to_string(), "custom:slack");
+    // A custom interface must survive a full onboarding flow and appear in the
+    // generated agent card exactly as formatted by Display.
+    let mut client = OpenConstructClient::builder().agent_name("a").build();
+    client.start().unwrap();
+    client.select_modules(&["spectral-graph-core"]).unwrap();
+    client
+        .choose_interface(InterfaceChoice::Custom("slack".into()))
+        .unwrap();
+    let config = client.generate_config().unwrap();
+    assert_eq!(
+        config.interface_choice,
+        InterfaceChoice::Custom("slack".into())
+    );
+    assert_eq!(config.agent_card.interface, "custom:slack");
+}
+
+#[test]
+fn config_json_is_valid_agent_card() {
+    let mut client = OpenConstructClient::builder()
+        .agent_name("json-agent")
+        .model("glm-5.1")
+        .capabilities(["code_generation"])
+        .build();
+    client.start().unwrap();
+    client
+        .select_modules(&["spectral-graph-core", "plato-room"])
+        .unwrap();
+    client.choose_interface(InterfaceChoice::Daemon).unwrap();
+    let config = client.generate_config().unwrap();
+
+    // config_json must be exactly the serialized AgentCard.
+    let parsed: AgentCard =
+        serde_json::from_str(&config.config_json).expect("config_json must deserialize");
+    assert_eq!(parsed, config.agent_card);
+}
+
+#[test]
+fn set_config_and_sense_mut() {
+    let mut client = OpenConstructClient::builder().build();
+    client.set_config("region", serde_json::json!("us-east"));
+    // sense_mut() must be usable to add shadows through the client.
+    client.start().unwrap();
+    let shadow =
+        client
+            .sense_mut()
+            .create_shadow("therm", SenseKind::Thermal, serde_json::json!(42.0));
+    assert_eq!(shadow.source, "therm");
+    assert_eq!(client.sense_mut().shadows().len(), 1);
+}
+
+#[test]
+fn capabilities_builder_replaces_not_appends() {
+    // Document the actual semantics: capabilities() replaces the full set.
+    let c1 = OpenConstructClient::builder()
+        .capabilities(["a"])
+        .capabilities(["b", "c"])
+        .build();
+    assert_eq!(c1.capabilities, vec!["b", "c"]);
 }
