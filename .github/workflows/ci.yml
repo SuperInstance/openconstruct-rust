@@ -15,4 +15,5 @@ jobs:
       - run: cargo check --all-targets
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test --all-targets
+      # Plain `cargo test` (not --all-targets) so the README doctest runs too.
+      - run: cargo test

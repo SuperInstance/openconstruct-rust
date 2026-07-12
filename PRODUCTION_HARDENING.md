@@ -50,3 +50,31 @@ independently with `cargo build`, `cargo test`, `cargo clippy --all-targets --
    sense `fuse()` None path, `FleetManager` round-trip.
 6. README: replace the false C-ABI claim with an honest status marker;
    mark sense fusion as a stub.
+
+## Status (post-fix)
+
+All items above landed. Final verification (matches the CI workflow exactly):
+
+```
+cargo check --all-targets            # ok
+cargo fmt --all -- --check           # clean
+cargo clippy --all-targets -- -D warnings   # no warnings
+cargo test                           # 13 unit + 29 integration + 1 doctest = 43 passing
+```
+
+Additional changes made during the pass:
+
+- `OpenConstructClient::reset()` added so the renamed error's "call reset()"
+  hint is backed by a real API; `reset()` returns the previous session id.
+- Added `FleetManager::with_nodes()` / `add_node()` / `nodes()` so the
+  previously-dead `nodes` field is a real, useful topology.
+- Derived `PartialEq` on `ModuleDescriptor`, `PolicyRule`, `AgentCard`
+  (non-breaking; enables value comparisons in user code and tests).
+- Wired the README into the crate as `#![doc = include_str!("../README.md")]`
+  and made the Quick Start a complete `fn main() -> Result<...>` example so
+  it runs as a doctest. CI uses plain `cargo test` (not `--all-targets`) so
+  the doctest actually executes — `--all-targets` skips doctests, which is a
+  subtle way examples can rot silently.
+- Softened `Cargo.toml` `description` ("full-featured" -> honest per-feature
+  wording) and dropped the inaccurate `api-bindings` category (the crate has
+  no FFI surface).
