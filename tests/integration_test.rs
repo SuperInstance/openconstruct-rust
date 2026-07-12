@@ -43,7 +43,31 @@ fn unique_session_ids() {
 fn start_twice_errors() {
     let mut client = OpenConstructClient::builder().build();
     client.start().unwrap();
-    assert!(client.start().is_err());
+    let err = client.start().unwrap_err();
+    // Renamed from the misleading `AlreadyComplete`; the session is started,
+    // not finished.
+    assert!(matches!(err, OpenConstructError::SessionAlreadyStarted));
+}
+
+#[test]
+fn reset_clears_session_and_allows_restart() {
+    let mut client = OpenConstructClient::builder().build();
+    client.start().unwrap();
+    let sid = client.session_id().unwrap().to_string();
+    client.select_modules(&["spectral-graph-core"]).unwrap();
+    client.choose_interface(InterfaceChoice::Cli).unwrap();
+
+    let prev = client.reset();
+    assert_eq!(prev.as_deref(), Some(sid.as_str()));
+    assert!(client.session_id().is_none());
+    assert!(client.phase().is_none());
+
+    // After reset, a fresh session can be started without error.
+    client.start().unwrap();
+    assert_ne!(client.session_id(), Some(sid.as_str()));
+    // Re-selecting modules without a fresh select now fails because state was
+    // cleared — generate_config should refuse until modules are chosen again.
+    assert!(client.generate_config().is_err());
 }
 
 #[test]

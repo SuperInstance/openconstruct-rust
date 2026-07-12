@@ -45,7 +45,7 @@ impl OpenConstructClient {
     /// Start the onboarding session.
     pub fn start(&mut self) -> Result<()> {
         if self.session.is_some() {
-            return Err(OpenConstructError::AlreadyComplete);
+            return Err(OpenConstructError::SessionAlreadyStarted);
         }
         self.session = Some(Session {
             id: uuid::Uuid::new_v4().to_string(),
@@ -54,6 +54,16 @@ impl OpenConstructClient {
             phase: SessionPhase::Init,
         });
         Ok(())
+    }
+
+    /// Reset the session and all onboarding state, returning the previous
+    /// session id if one was active. Useful for re-onboarding an existing
+    /// client without having to reconstruct it.
+    pub fn reset(&mut self) -> Option<String> {
+        let prev = self.session.take().map(|s| s.id);
+        self.selected_modules.clear();
+        self.interface_choice = None;
+        prev
     }
 
     /// Get the session ID (if started).

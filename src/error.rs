@@ -2,11 +2,11 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum OpenConstructError {
+    #[error("session already started — call reset() to begin again")]
+    SessionAlreadyStarted,
+
     #[error("session not started — call start() first")]
     SessionNotStarted,
-
-    #[error("onboarding already complete")]
-    AlreadyComplete,
 
     #[error("module not found: {name}")]
     ModuleNotFound { name: String },
@@ -28,6 +28,16 @@ pub enum OpenConstructError {
 
     #[error("{0}")]
     Custom(String),
+}
+
+impl OpenConstructError {
+    /// Returns the legacy name for `SessionAlreadyStarted`.
+    ///
+    /// Historically this condition was reported as `AlreadyComplete`, which is
+    /// misleading: the session is merely already started, not finished. New
+    /// code should match on [`OpenConstructError::SessionAlreadyStarted`].
+    #[deprecated(note = "use SessionAlreadyStarted")]
+    pub const ALREADY_COMPLETE_NAME: &'static str = "SessionAlreadyStarted";
 }
 
 pub type Result<T> = std::result::Result<T, OpenConstructError>;
