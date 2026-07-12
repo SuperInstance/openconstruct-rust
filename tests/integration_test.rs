@@ -22,9 +22,7 @@ fn builder_defaults() {
 
 #[test]
 fn start_creates_session() {
-    let mut client = OpenConstructClient::builder()
-        .agent_name("s1")
-        .build();
+    let mut client = OpenConstructClient::builder().agent_name("s1").build();
     assert!(client.session_id().is_none());
     client.start().unwrap();
     assert!(client.session_id().is_some());
@@ -52,7 +50,9 @@ fn start_twice_errors() {
 fn select_modules() {
     let mut client = OpenConstructClient::builder().build();
     client.start().unwrap();
-    client.select_modules(&["spectral-graph-core", "plato-room"]).unwrap();
+    client
+        .select_modules(&["spectral-graph-core", "plato-room"])
+        .unwrap();
     assert_eq!(client.phase().unwrap(), &SessionPhase::Modules);
 }
 
@@ -85,7 +85,9 @@ fn generate_config() {
         .capabilities(["code_generation", "web_search"])
         .build();
     client.start().unwrap();
-    client.select_modules(&["spectral-graph-core", "plato-room"]).unwrap();
+    client
+        .select_modules(&["spectral-graph-core", "plato-room"])
+        .unwrap();
     client.choose_interface(InterfaceChoice::Cli).unwrap();
     let config = client.generate_config().unwrap();
 
@@ -123,7 +125,9 @@ fn full_lifecycle() {
     client.start().unwrap();
     let sid = client.session_id().unwrap().to_string();
 
-    client.select_modules(&["spectral-graph-core", "echo-memory", "prism-vision"]).unwrap();
+    client
+        .select_modules(&["spectral-graph-core", "echo-memory", "prism-vision"])
+        .unwrap();
     client.choose_interface(InterfaceChoice::Discord).unwrap();
 
     let config = client.generate_config().unwrap();
@@ -171,7 +175,9 @@ fn fleet_best_node_for_missing_capability() {
 fn policy_check_allow() {
     let mut client = OpenConstructClient::builder().build();
     client.start().unwrap();
-    let decision = client.policy_check("vision.capture", "/dev/video0").unwrap();
+    let decision = client
+        .policy_check("vision.capture", "/dev/video0")
+        .unwrap();
     assert_eq!(decision, PolicyDecision::Allow);
 }
 
@@ -187,7 +193,9 @@ fn policy_check_deny() {
 fn policy_check_ask() {
     let mut client = OpenConstructClient::builder().build();
     client.start().unwrap();
-    let decision = client.policy_check("network.connect", "tcp://example.com").unwrap();
+    let decision = client
+        .policy_check("network.connect", "tcp://example.com")
+        .unwrap();
     assert_eq!(decision, PolicyDecision::Ask);
 }
 
@@ -201,7 +209,7 @@ fn policy_check_without_session_errors() {
 fn module_filtering_by_domain() {
     let registry = openconstruct::registry::ModuleRegistry::load_defaults();
     let perception = registry.filter_by_domain("perception");
-    assert!(perception.len() >= 1);
+    assert!(!perception.is_empty());
     assert!(perception.iter().any(|m| m.name == "prism-vision"));
 }
 
@@ -209,6 +217,8 @@ fn module_filtering_by_domain() {
 fn module_filtering_by_tag() {
     let registry = openconstruct::registry::ModuleRegistry::load_defaults();
     let graph_modules = registry.filter_by_tag("graph");
-    assert!(graph_modules.len() >= 1);
-    assert!(graph_modules.iter().any(|m| m.name == "spectral-graph-core"));
+    assert!(!graph_modules.is_empty());
+    assert!(graph_modules
+        .iter()
+        .any(|m| m.name == "spectral-graph-core"));
 }

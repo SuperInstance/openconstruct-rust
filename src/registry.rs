@@ -6,9 +6,17 @@ pub struct ModuleRegistry {
     modules: Vec<ModuleDescriptor>,
 }
 
+impl Default for ModuleRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ModuleRegistry {
     pub fn new() -> Self {
-        Self { modules: Vec::new() }
+        Self {
+            modules: Vec::new(),
+        }
     }
 
     /// Load built-in default modules.
@@ -78,7 +86,10 @@ impl ModuleRegistry {
 
     /// Filter modules by tag.
     pub fn filter_by_tag(&self, tag: &str) -> Vec<&ModuleDescriptor> {
-        self.modules.iter().filter(|m| m.tags.iter().any(|t| t == tag)).collect()
+        self.modules
+            .iter()
+            .filter(|m| m.tags.iter().any(|t| t == tag))
+            .collect()
     }
 
     /// List all modules.
@@ -95,6 +106,12 @@ impl ModuleRegistry {
 #[derive(Debug, Clone)]
 pub struct PolicyEngine {
     rules: Vec<PolicyRule>,
+}
+
+impl Default for PolicyEngine {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PolicyEngine {
@@ -155,8 +172,7 @@ impl PolicyEngine {
         if pattern == "*" {
             return true;
         }
-        if pattern.ends_with('*') {
-            let prefix = &pattern[..pattern.len() - 1];
+        if let Some(prefix) = pattern.strip_suffix('*') {
             return value.starts_with(prefix);
         }
         pattern == value
