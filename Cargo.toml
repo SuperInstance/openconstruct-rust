@@ -2,11 +2,11 @@
 name = "openconstruct"
 version = "0.1.0"
 edition = "2021"
-description = "Native Rust SDK for OpenConstruct — full-featured client for onboarding, modules, policy, fleet, and sense"
+description = "Native Rust client for OpenConstruct — onboarding, module registry, policy engine, in-process fleet discovery, and sense shadows"
 license = "MIT"
 repository = "https://github.com/SuperInstance/openconstruct-rust"
 keywords = ["openconstruct", "sdk", "agent", "onboarding"]
-categories = ["api-bindings", "development-tools"]
+categories = ["development-tools"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

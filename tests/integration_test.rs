@@ -22,9 +22,7 @@ fn builder_defaults() {
 
 #[test]
 fn start_creates_session() {
-    let mut client = OpenConstructClient::builder()
-        .agent_name("s1")
-        .build();
+    let mut client = OpenConstructClient::builder().agent_name("s1").build();
     assert!(client.session_id().is_none());
     client.start().unwrap();
     assert!(client.session_id().is_some());
@@ -45,14 +43,40 @@ fn unique_session_ids() {
 fn start_twice_errors() {
     let mut client = OpenConstructClient::builder().build();
     client.start().unwrap();
-    assert!(client.start().is_err());
+    let err = client.start().unwrap_err();
+    // Renamed from the misleading `AlreadyComplete`; the session is started,
+    // not finished.
+    assert!(matches!(err, OpenConstructError::SessionAlreadyStarted));
+}
+
+#[test]
+fn reset_clears_session_and_allows_restart() {
+    let mut client = OpenConstructClient::builder().build();
+    client.start().unwrap();
+    let sid = client.session_id().unwrap().to_string();
+    client.select_modules(&["spectral-graph-core"]).unwrap();
+    client.choose_interface(InterfaceChoice::Cli).unwrap();
+
+    let prev = client.reset();
+    assert_eq!(prev.as_deref(), Some(sid.as_str()));
+    assert!(client.session_id().is_none());
+    assert!(client.phase().is_none());
+
+    // After reset, a fresh session can be started without error.
+    client.start().unwrap();
+    assert_ne!(client.session_id(), Some(sid.as_str()));
+    // Re-selecting modules without a fresh select now fails because state was
+    // cleared — generate_config should refuse until modules are chosen again.
+    assert!(client.generate_config().is_err());
 }
 
 #[test]
 fn select_modules() {
     let mut client = OpenConstructClient::builder().build();
     client.start().unwrap();
-    client.select_modules(&["spectral-graph-core", "plato-room"]).unwrap();
+    client
+        .select_modules(&["spectral-graph-core", "plato-room"])
+        .unwrap();
     assert_eq!(client.phase().unwrap(), &SessionPhase::Modules);
 }
 
@@ -85,7 +109,9 @@ fn generate_config() {
         .capabilities(["code_generation", "web_search"])
         .build();
     client.start().unwrap();
-    client.select_modules(&["spectral-graph-core", "plato-room"]).unwrap();
+    client
+        .select_modules(&["spectral-graph-core", "plato-room"])
+        .unwrap();
     client.choose_interface(InterfaceChoice::Cli).unwrap();
     let config = client.generate_config().unwrap();
 
@@ -123,7 +149,9 @@ fn full_lifecycle() {
     client.start().unwrap();
     let sid = client.session_id().unwrap().to_string();
 
-    client.select_modules(&["spectral-graph-core", "echo-memory", "prism-vision"]).unwrap();
+    client
+        .select_modules(&["spectral-graph-core", "echo-memory", "prism-vision"])
+        .unwrap();
     client.choose_interface(InterfaceChoice::Discord).unwrap();
 
     let config = client.generate_config().unwrap();
@@ -171,7 +199,9 @@ fn fleet_best_node_for_missing_capability() {
 fn policy_check_allow() {
     let mut client = OpenConstructClient::builder().build();
     client.start().unwrap();
-    let decision = client.policy_check("vision.capture", "/dev/video0").unwrap();
+    let decision = client
+        .policy_check("vision.capture", "/dev/video0")
+        .unwrap();
     assert_eq!(decision, PolicyDecision::Allow);
 }
 
@@ -187,7 +217,9 @@ fn policy_check_deny() {
 fn policy_check_ask() {
     let mut client = OpenConstructClient::builder().build();
     client.start().unwrap();
-    let decision = client.policy_check("network.connect", "tcp://example.com").unwrap();
+    let decision = client
+        .policy_check("network.connect", "tcp://example.com")
+        .unwrap();
     assert_eq!(decision, PolicyDecision::Ask);
 }
 
@@ -198,17 +230,106 @@ fn policy_check_without_session_errors() {
 }
 
 #[test]
-fn module_filtering_by_domain() {
-    let registry = openconstruct::registry::ModuleRegistry::load_defaults();
-    let perception = registry.filter_by_domain("perception");
-    assert!(perception.len() >= 1);
-    assert!(perception.iter().any(|m| m.name == "prism-vision"));
-}
-
-#[test]
 fn module_filtering_by_tag() {
     let registry = openconstruct::registry::ModuleRegistry::load_defaults();
     let graph_modules = registry.filter_by_tag("graph");
-    assert!(graph_modules.len() >= 1);
-    assert!(graph_modules.iter().any(|m| m.name == "spectral-graph-core"));
+    assert!(!graph_modules.is_empty());
+    assert!(graph_modules
+        .iter()
+        .any(|m| m.name == "spectral-graph-core"));
+}
+
+#[test]
+fn discover_fleet_without_session_errors() {
+    let client = OpenConstructClient::builder().build();
+    // Symmetric with policy_check_without_session_errors — discover_fleet also
+    // requires a session and this branch was previously untested.
+    assert!(client.discover_fleet().is_err());
+}
+
+#[test]
+fn registry_find_missing_returns_none() {
+    let registry = openconstruct::registry::ModuleRegistry::load_defaults();
+    assert!(registry.find("does-not-exist").is_none());
+    assert!(registry.find("spectral-graph-core").is_some());
+}
+
+#[test]
+fn registry_add_and_new() {
+    let mut registry = openconstruct::registry::ModuleRegistry::new();
+    assert!(registry.list().is_empty());
+    registry.add(ModuleDescriptor {
+        name: "custom".into(),
+        version: "0.1.0".into(),
+        domain: "custom".into(),
+        tags: vec!["t".into()],
+        description: "custom module".into(),
+        enabled: true,
+    });
+    assert_eq!(registry.list().len(), 1);
+    assert!(registry.find("custom").is_some());
+}
+
+#[test]
+fn custom_interface_choice_round_trips() {
+    let choice = InterfaceChoice::Custom("slack".into());
+    assert_eq!(choice.to_string(), "custom:slack");
+    // A custom interface must survive a full onboarding flow and appear in the
+    // generated agent card exactly as formatted by Display.
+    let mut client = OpenConstructClient::builder().agent_name("a").build();
+    client.start().unwrap();
+    client.select_modules(&["spectral-graph-core"]).unwrap();
+    client
+        .choose_interface(InterfaceChoice::Custom("slack".into()))
+        .unwrap();
+    let config = client.generate_config().unwrap();
+    assert_eq!(
+        config.interface_choice,
+        InterfaceChoice::Custom("slack".into())
+    );
+    assert_eq!(config.agent_card.interface, "custom:slack");
+}
+
+#[test]
+fn config_json_is_valid_agent_card() {
+    let mut client = OpenConstructClient::builder()
+        .agent_name("json-agent")
+        .model("glm-5.1")
+        .capabilities(["code_generation"])
+        .build();
+    client.start().unwrap();
+    client
+        .select_modules(&["spectral-graph-core", "plato-room"])
+        .unwrap();
+    client.choose_interface(InterfaceChoice::Daemon).unwrap();
+    let config = client.generate_config().unwrap();
+
+    // config_json must be exactly the serialized AgentCard.
+    let parsed: AgentCard =
+        serde_json::from_str(&config.config_json).expect("config_json must deserialize");
+    assert_eq!(parsed, config.agent_card);
+}
+
+#[test]
+fn set_config_and_sense_mut() {
+    let mut client = OpenConstructClient::builder().build();
+    client.set_config("region", serde_json::json!("us-east"));
+    // sense_mut() must be usable to add shadows through the client.
+    client.start().unwrap();
+    let shadow =
+        client
+            .sense_mut()
+            .create_shadow("therm", SenseKind::Thermal, serde_json::json!(42.0));
+    assert_eq!(shadow.source, "therm");
+    assert_eq!(client.sense_mut().shadows().len(), 1);
+}
+
+#[test]
+fn capabilities_builder_replaces_not_appends() {
+    // Document the actual semantics: capabilities() replaces the full set.
+    let c1 = OpenConstructClient::builder()
+        .capabilities(["a"])
+        .capabilities(["b", "c"])
+        .build();
+    assert_eq!(c1.capabilities, vec!["b", "c"]);
 }

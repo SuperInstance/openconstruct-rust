@@ -26,11 +26,7 @@ impl OpenConstructClient {
         crate::builder::OpenConstructClientBuilder::new()
     }
 
-    pub(crate) fn new(
-        agent_name: String,
-        model: String,
-        capabilities: Vec<String>,
-    ) -> Self {
+    pub(crate) fn new(agent_name: String, model: String, capabilities: Vec<String>) -> Self {
         Self {
             agent_name,
             model,
@@ -49,7 +45,7 @@ impl OpenConstructClient {
     /// Start the onboarding session.
     pub fn start(&mut self) -> Result<()> {
         if self.session.is_some() {
-            return Err(OpenConstructError::AlreadyComplete);
+            return Err(OpenConstructError::SessionAlreadyStarted);
         }
         self.session = Some(Session {
             id: uuid::Uuid::new_v4().to_string(),
@@ -58,6 +54,16 @@ impl OpenConstructClient {
             phase: SessionPhase::Init,
         });
         Ok(())
+    }
+
+    /// Reset the session and all onboarding state, returning the previous
+    /// session id if one was active. Useful for re-onboarding an existing
+    /// client without having to reconstruct it.
+    pub fn reset(&mut self) -> Option<String> {
+        let prev = self.session.take().map(|s| s.id);
+        self.selected_modules.clear();
+        self.interface_choice = None;
+        prev
     }
 
     /// Get the session ID (if started).
@@ -72,16 +78,17 @@ impl OpenConstructClient {
 
     /// Select modules by name.
     pub fn select_modules(&mut self, names: &[&str]) -> Result<()> {
-        let session = self.session.as_mut().ok_or(OpenConstructError::SessionNotStarted)?;
+        let session = self
+            .session
+            .as_mut()
+            .ok_or(OpenConstructError::SessionNotStarted)?;
         let mut selected = Vec::new();
         for name in names {
-            let module = self
-                .registry
-                .find(name)
-                .cloned()
-                .ok_or_else(|| OpenConstructError::ModuleNotFound {
+            let module = self.registry.find(name).cloned().ok_or_else(|| {
+                OpenConstructError::ModuleNotFound {
                     name: name.to_string(),
-                })?;
+                }
+            })?;
             selected.push(module);
         }
         self.selected_modules = selected;
@@ -91,7 +98,10 @@ impl OpenConstructClient {
 
     /// Choose the interface.
     pub fn choose_interface(&mut self, choice: InterfaceChoice) -> Result<()> {
-        let session = self.session.as_mut().ok_or(OpenConstructError::SessionNotStarted)?;
+        let session = self
+            .session
+            .as_mut()
+            .ok_or(OpenConstructError::SessionNotStarted)?;
         self.interface_choice = Some(choice);
         session.phase = SessionPhase::Interface;
         Ok(())
@@ -99,7 +109,10 @@ impl OpenConstructClient {
 
     /// Generate the final onboarding configuration.
     pub fn generate_config(&self) -> Result<OnboardingConfig> {
-        let session = self.session.as_ref().ok_or(OpenConstructError::SessionNotStarted)?;
+        let session = self
+            .session
+            .as_ref()
+            .ok_or(OpenConstructError::SessionNotStarted)?;
         if self.selected_modules.is_empty() {
             return Err(OpenConstructError::ModulesNotSelected);
         }
@@ -112,7 +125,11 @@ impl OpenConstructClient {
             name: self.agent_name.clone(),
             model: self.model.clone(),
             capabilities: self.capabilities.clone(),
-            modules: self.selected_modules.iter().map(|m| m.name.clone()).collect(),
+            modules: self
+                .selected_modules
+                .iter()
+                .map(|m| m.name.clone())
+                .collect(),
             interface: interface.to_string(),
             session_id: session.id.clone(),
             created_at: chrono::Utc::now(),
@@ -130,13 +147,17 @@ impl OpenConstructClient {
 
     /// Discover fleet nodes.
     pub fn discover_fleet(&self) -> Result<FleetDiscovery> {
-        self.session.as_ref().ok_or(OpenConstructError::SessionNotStarted)?;
+        self.session
+            .as_ref()
+            .ok_or(OpenConstructError::SessionNotStarted)?;
         Ok(self.fleet.discover())
     }
 
     /// Check a policy action.
     pub fn policy_check(&self, action: &str, resource: &str) -> Result<PolicyDecision> {
-        self.session.as_ref().ok_or(OpenConstructError::SessionNotStarted)?;
+        self.session
+            .as_ref()
+            .ok_or(OpenConstructError::SessionNotStarted)?;
         Ok(self.policy.evaluate(action, resource))
     }
 

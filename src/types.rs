@@ -25,7 +25,7 @@ impl std::fmt::Display for InterfaceChoice {
 }
 
 /// A module descriptor from the registry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModuleDescriptor {
     pub name: String,
     pub version: String,
@@ -44,7 +44,7 @@ pub enum PolicyDecision {
 }
 
 /// A policy rule.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PolicyRule {
     pub action_pattern: String,
     pub resource_pattern: String,
@@ -119,7 +119,7 @@ pub struct FusedSense {
 }
 
 /// Agent card produced by the onboarding flow.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentCard {
     pub name: String,
     pub model: String,
